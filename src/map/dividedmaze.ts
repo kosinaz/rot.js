@@ -1,5 +1,11 @@
 import Map, { CreateCallback } from "./map.js";
 import RNG from "../rng.js";
+import { Room as RoomClass, Corridor } from "./features.js";
+
+interface Options {
+  roomWidth: [number, number];
+  roomHeight: [number, number];
+}
 
 type Room = [number, number, number, number];
 type Point = [number, number];
@@ -9,12 +15,30 @@ type Point = [number, number];
  * @augments ROT.Map
  */
 export default class DividedMaze extends Map {
+  _options: Options;
 	_stack: Room[] = [];
-	_map: number[][] = [];
+  _map: number[][] = [];
+  _rooms: RoomClass[] = [];
+  _corridors: Corridor[] = [];
+  _doors: Point[] = [];
+
+  constructor(width: number, height: number, options: Partial<Options>) {
+    super(width, height);
+
+    this._options = {
+      roomWidth: [1, 5], /* room minimum and maximum width */
+      roomHeight: [1, 5], /* room minimum and maximum height */
+    };
+    Object.assign(this._options, options);
+    this._map = [];
+    this._doors = [];
+    this._corridors = [];
+    this._rooms = [];
+  }
 
 	create(callback: CreateCallback ) {
 		let w = this._width;
-		let h = this._height;
+    let h = this._height;
 		
 		this._map = [];
 		
@@ -24,12 +48,20 @@ export default class DividedMaze extends Map {
 				let border = (i == 0 || j == 0 || i+1 == w || j+1 == h);
 				this._map[i].push(border ? 1 : 0);
 			}
-		}
+    }
 		
 		this._stack = [
 			[1, 1, w-2, h-2]
-		];
-		this._process();
+    ];
+    this._rooms = [];
+    this._corridors = [];
+
+    if (
+      this._width > this._options.roomWidth[0] * 2 + 1 &&
+      this._height > this._options.roomHeight[0] * 2 + 1
+    ) {
+      this._process();
+    }	
 		
 		for (let i=0;i<w;i++) {
 			for (let j=0;j<h;j++) {
@@ -38,32 +70,86 @@ export default class DividedMaze extends Map {
 		}
 		this._map = [];
 		return this;
-	}
+  }
+  
+  getRooms() {
+    return this._rooms;
+  }
+
+  getCorridors() {
+    return this._corridors;
+  }
 
 	_process() {
 		while (this._stack.length) {
 			let room = this._stack.shift() as Room; /* [left, top, right, bottom] */
-			this._partitionRoom(room);
+      this._partitionRoom(room);
 		}
 	}
 
 	_partitionRoom(room: Room) {
 		let availX: number[] = [];
-		let availY: number[] = [];
-		
-		for (let i=room[0]+1;i<room[2];i++) {
+    let availY: number[] = [];
+    let doors: Point[] = [];
+    let minW = this._options.roomWidth[0];
+    let minH = this._options.roomHeight[0]
+
+		for (let i=room[0];i<=room[2];i++) {
+      if (i < 1 || i > this._width - 3) {
+        continue;
+      }
 			let top = this._map[i][room[1]-1];
-			let bottom = this._map[i][room[3]+1];
-			if (top && bottom && !(i % 2)) { availX.push(i); }
+      let bottom = this._map[i][room[3]+1];
+      if (!top) {
+        doors.push([i, room[1] - 1]);
+      }
+      if (!bottom) {
+        doors.push([i, room[3] + 1]);
+      }
+			if (
+        top && 
+        bottom && 
+        !(i % 2) && 
+        i >= room[0] + minW &&
+        i <= room[2] - minW
+      ) { 
+        availX.push(i); 
+      }
 		}
 		
-		for (let j=room[1]+1;j<room[3];j++) {
+		for (let j=room[1];j<=room[3];j++) {
+      if (j < 1 || j > this._height - 3) {
+        continue;
+      }
 			let left = this._map[room[0]-1][j];
-			let right = this._map[room[2]+1][j];
-			if (left && right && !(j % 2)) { availY.push(j); }
+      let right = this._map[room[2]+1][j];
+      if (!left) {
+        doors.push([room[0] - 1, j]);
+      }
+      if (!right) {
+        doors.push([room[2] + 1, j]);
+      }
+			if (
+        left && 
+        right && 
+        !(j % 2) &&
+        j >= room[1] + minH &&
+        j <= room[3] - minH
+      ) { 
+        availY.push(j); 
+      }
 		}
 
-		if (!availX.length || !availY.length) { return; }
+		if (!availX.length || !availY.length) {
+      if (room[0] === room[2] || room[1] === room[3]) {
+        this._corridors.push(new Corridor(room[0], room[1], room[2], room[3]));
+      } else {
+        let newRoom = new RoomClass(room[0], room[1], room[2], room[3]);
+        doors.forEach(door => newRoom.addDoor(door[0], door[1]));
+        this._rooms.push(newRoom);
+      }
+      return; 
+    }
 
 		let x = RNG.getItem(availX) as number;
 		let y = RNG.getItem(availY) as number;
@@ -102,7 +188,8 @@ export default class DividedMaze extends Map {
 			if (w == solid) { continue; }
 			
 			let hole = RNG.getItem(w) as Point;
-			this._map[hole[0]][hole[1]] = 0;
+      this._map[hole[0]][hole[1]] = 0;
+      this._doors.push(hole);
 		}
 
 		this._stack.push([room[0], room[1], x-1, y-1]); /* left top */
