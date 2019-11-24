@@ -95,7 +95,7 @@ export default class DividedMaze extends Map {
     let minH = this._options.roomHeight[0]
 
 		for (let i=room[0];i<=room[2];i++) {
-      if (i < 1 || i > this._width - 3) {
+      if (i < 1 || i > this._width - 2) {
         continue;
       }
 			let top = this._map[i][room[1]-1];
@@ -118,7 +118,7 @@ export default class DividedMaze extends Map {
 		}
 		
 		for (let j=room[1];j<=room[3];j++) {
-      if (j < 1 || j > this._height - 3) {
+      if (j < 1 || j > this._height - 2) {
         continue;
       }
 			let left = this._map[room[0]-1][j];
